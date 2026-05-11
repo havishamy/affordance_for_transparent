@@ -1,0 +1,646 @@
+参考论文工作：《GLOVER: Generalizable Open-Vocabulary Affordance Reasoning
+for Task-Oriented Grasping》
+这篇论文做的是**机器人“按任务抓取”的开放词汇 affordance reasoning**，方法名叫 **GLOVER**：
+**Generalizable Open-Vocabulary Affordance Reasoning for Task-Oriented Grasping**。
+
+简单说，它想解决的问题是：
+
+> 给机器人一张 RGB-D 图像和一句自然语言指令，比如
+> “use the hammer / pick up the pot / open the pot / pump the sanitizer”，
+> 机器人不仅要知道“哪个物体”，还要知道“该抓/接触这个物体的哪个部位”。
+
+---
+
+## 1. 它的核心任务是什么？
+
+不是普通语义分割，也不是普通抓取点预测，而是：
+
+**根据语言任务，预测物体上可交互/可抓取的区域。**
+
+例如：
+
+| 指令                | 机器人应该理解       |
+| ----------------- | ------------- |
+| pick up the pot   | 抓锅身或把手，能拿起来即可 |
+| open the pot      | 应该接触锅盖把手      |
+| use hammer        | 应该抓锤柄，而不是锤头   |
+| pump sanitizer    | 应该按压瓶口泵头      |
+| pick up sanitizer | 应该抓瓶身         |
+
+所以它关注的是**task-oriented affordance**：
+同一个物体，在不同任务下，affordance 区域不同。
+
+---
+
+## 2. 它的输入和输出是什么？
+
+**输入：**
+
+1. 一张 RGB 或 RGB-D 图像；
+2. 一句自然语言任务指令，例如：
+   “What part of the pot should we interact with to open it?”
+
+**输出：**
+
+1. 一张 2D affordance mask：
+   表示图像中哪些区域适合被交互/抓取；
+2. 再结合深度图，把 affordance 投影到 3D；
+3. 最后生成机器人夹爪的抓取位姿。
+
+也就是说，它从：
+
+> 图像 + 语言指令
+> → 任务相关 affordance mask
+> → 3D affordance 区域
+> → 抓取姿态
+> → 真实机器人执行
+
+---
+
+## 3. 方法上主要做了什么？
+
+论文主要有两块贡献。
+
+第一块是 **GLOVER perception model**。
+
+它基于 LISA / LLaVA / SAM 这类视觉语言模型，把原本做 reasoning segmentation 的模型改成做 affordance reasoning。具体来说，它加入一个特殊 token `<AFF>`，让模型从图像和语言中编码“应该交互哪里”，然后通过 affordance decoder 输出连续概率图，而不是二值 mask。
+
+第二块是 **AGE: Affordance-Aware Grasping Estimation**。
+
+模型预测出 affordance mask 后，论文没有直接用 GraspNet / AnyGrasp 这类额外抓取网络，而是提出一个非参数的 grasp planner：
+
+1. 把 2D affordance mask 投影成 3D 点云；
+2. 用 DBSCAN 去噪和聚类；
+3. 用 superquadric 拟合 affordance 区域的几何形状；
+4. 把夹爪也近似成一个椭球；
+5. 通过优化让夹爪表面和 affordance 表面对齐，得到抓取姿态。
+
+---
+
+## 4. 它和以前方法相比解决了什么痛点？
+
+论文强调它比之前方法更轻量、更直接：
+
+以前一些方法需要：
+
+1. 多视角拍摄；
+2. 3D radiance field / NeRF / Gaussian Splatting 重建；
+3. 额外 offline affordance memory；
+4. 手动告诉模型应该找哪个物体部件，比如 “hammer handle”。
+
+而 GLOVER 想做到：
+
+> 单张图像 + 自然语言任务 → 直接推理交互区域，不需要额外 memory，也不需要多视角 3D 重建。
+
+这也是标题里 **Generalizable Open-Vocabulary** 的意思：
+它希望对新物体、新语言、新场景有泛化能力。
+
+---
+
+## 5. 数据集怎么做的？
+
+它整理了一个视觉-语言 affordance 数据集：
+
+* 大约 **12,215 张图像**；
+* **52,240 个 human-object interaction 实例**；
+* 图像来自 AGD20K、3DOI 等；
+* 用 VLM 辅助标注物体类别；
+* 把人-物交互点转换成 Gaussian affordance heatmap。
+
+这里比较关键的是：
+它把 affordance 从“一个点”变成“连续概率区域”，这更适合机器人抓取，因为抓取通常不是一个像素点，而是一片可行接触区域。
+
+---
+
+## 6. 实验结果大概怎样？
+
+它在真实桌面场景里测试了两类能力：
+
+1. **Compositional object understanding**
+   比如红苹果 vs 绿苹果、大锅 vs 小锅、上面的杯子 vs 下面的杯子。
+
+2. **Task-aware tool using**
+   比如同一个消毒液瓶，pick up 和 pump 对应不同接触区域。
+
+论文报告的主要结果是：
+
+* affordance reasoning 成功率：**86.0%**
+* real-world grasping 成功率：**76.3%**
+* 相比之前 SOTA，affordance reasoning 提升约 **20.0%**
+* grasping 成功率提升约 **17.3%**
+* affordance reasoning 速度比 RAM 快约 **29 倍**
+* grasp pose estimation 比 GraspNet 类方法快约 **40 倍**
+
+---
+
+## 7. 用一句话概括
+
+这篇论文的核心工作是：
+
+> 训练一个视觉语言模型，让机器人能根据自然语言任务，在图像中预测“应该接触/抓取物体的哪个区域”，再把这个区域转成 3D 抓取姿态，用于真实机器人 task-oriented grasping。
+
+---
+
+## 8. 和你之前提的 idea 的关系
+
+你之前提到的 idea 是：
+
+> RGB-D observation + manipulation instruction → predict action-relevant regions，例如 graspable、supportable、pourable、openable、unsafe-contact areas。
+
+这篇 GLOVER 可以看成是这个方向里的一个具体实现，但它主要聚焦在：
+
+**task-oriented graspable affordance**。
+
+也就是说，它主要预测“为了完成某个任务，哪里适合抓/接触”，而不是完整覆盖 supportable、pourable、openable、unsafe-contact 等多种 affordance 类型。
+
+所以如果你想基于它扩展小工作，一个自然方向就是：
+
+> 从 GLOVER 的“graspable affordance”扩展到多类型 action-relevant affordance mask，例如 graspable / openable / pourable / supportable / unsafe-contact，并把这些 mask 作为 motion planning 的中间表示。
+
+我的迁移场景：化学实验室里的仪器的相关操作
+GPT讨论建议我的一周先做一个简单小规模轻量级验证：（如下）
+是的，第一周可以做一个**很小但完整的 proof-of-concept**。目标不要定成“完整论文实验”，而是定成：
+
+> 给定一个不透明实验器具和一个任务指令，模型能预测不同的可交互区域，并让机器人根据这个区域选择接触点。
+
+这和 GLOVER 的思路一致：它不是只做普通二值 mask，而是让模型根据语言/任务输出 affordance mask，再把 affordance 投到 3D 中用于抓取或操作。GLOVER 本身用 LLaVA/LISA/SAM 这类大模型做 fine-tuning，但它的训练设置比较重；你第一周不应该直接复现这个大模型，而应该做一个轻量版验证。
+
+## 一周内最推荐的实验目标
+
+先选 **3 个不透明实验室物品 + 每个 2 个任务**。
+
+我推荐这 3 个：
+
+```text
+1. Micropipette / pipette
+   Task A: pick up the pipette        -> grasp handle/body
+   Task B: press the plunger          -> contact top button/plunger
+
+2. Reagent bottle / sample bottle
+   Task A: pick up the bottle         -> grasp bottle body
+   Task B: open the bottle            -> contact cap
+
+3. Petri dish / small container
+   Task A: move the dish              -> grasp side wall
+   Task B: open the lid               -> contact lid edge/rim
+```
+
+这组很好，因为它们都不透明或半不透明，RGB-D 深度比较可靠；同时任务差异很清楚。同一个物体，`pick up` 和 `open/press` 的接触区域完全不同。
+
+第一周的最低目标是做出这个 demo：
+
+```text
+输入 RGB-D image + instruction
+输出 affordance mask
+从 affordance mask 选 3D contact point
+机器人移动到该点，完成 grasp / touch / press / lift 的小动作
+```
+
+## 第 0 步：不要一开始训练大模型
+
+第一周建议做一个 **task-conditioned small mask predictor**，不要直接微调 LLaVA/GLOVER。原因很简单：GLOVER 论文里是基于 LISA-7B/LLaVA/SAM 做 fine-tuning，并且使用多 GPU 训练；这对一周小验证不划算。
+
+你可以做轻量版：
+
+```text
+RGB image / object crop
++
+task instruction embedding
+->
+affordance mask
+```
+
+模型结构可以非常简单：
+
+```text
+Image encoder: ResNet18 / MobileNet / small U-Net encoder
+Text/task encoder: frozen CLIP text encoder 或者 task one-hot
+Decoder: U-Net/FPN style mask decoder
+Output: 1-channel affordance probability mask
+```
+
+为了第一周更稳，我建议你先用 **task one-hot**，不要一开始搞自由语言。也就是说：
+
+```text
+pick_up
+press
+open
+move
+```
+
+每个任务一个 ID。输入时把 task ID 映射成 embedding，再和图像 feature 融合。等 demo 跑通后，再换成 CLIP text embedding。
+
+## 数据采集与标注方案
+
+不要标完整复杂 mask。第一周可以用 **点标注 + Gaussian affordance mask**，这和 GLOVER 把 interaction points 转成 2D Gaussian affordance mask 的做法类似。这样标注速度会快很多。
+
+### 数据规模
+
+第一周够用：
+
+```text
+3 objects
+2 tasks per object
+每个 object 采 50-80 张图
+总共 150-240 张 RGB-D 图
+每张图标 2 个 task affordance
+最终约 300-480 个 image-task-mask pairs
+```
+
+如果时间很紧，最低也可以：
+
+```text
+每个 object 30 张
+总共 90 张图
+180 个 instruction-mask pairs
+```
+
+### 每张图怎么标
+
+每个 task 不一定画精细 mask，可以点 1–3 个中心点，然后生成椭圆或 Gaussian mask。
+
+例如：
+
+```text
+pipette + pick up:
+点 handle/body 中心区域，生成一块长条形 affordance mask
+
+pipette + press:
+点 top plunger，生成小圆形 affordance mask
+
+bottle + pick up:
+点 bottle body 两侧，生成 body affordance mask
+
+bottle + open:
+点 cap 区域，生成 cap affordance mask
+
+petri dish + move:
+点 side wall / outer edge
+
+petri dish + open:
+点 lid rim / lid edge
+```
+
+标注工具可以用 LabelMe / CVAT / Roboflow，最简单的是你自己写一个小脚本：鼠标点一下，保存 `(x, y, task_id, image_name)`，然后自动生成 Gaussian mask。
+
+## 一周计划
+
+### Day 1：确定任务、采图、写标注规则
+
+当天产出：
+
+```text
+objects:
+micropipette, reagent bottle, petri dish
+
+tasks:
+pick_up, press, open, move
+
+annotation rule:
+每个 task 应该标哪里，不应该标哪里
+```
+
+采图要求：
+
+```text
+固定 RGB-D 相机或 eye-in-hand 相机均可
+每个物体 50 张左右
+换 3-5 个位置
+换 2-3 个旋转角度
+换一点背景和光照
+每张保存 RGB + depth + camera intrinsics
+```
+
+注意第一周先不要做 cluttered scene。先单物体，桌面干净一点。
+
+---
+
+### Day 2：快速标注 affordance point/mask
+
+建议只标 affordance point，然后生成 Gaussian mask。
+
+数据格式可以这样：
+
+```json
+{
+  "image": "000123.png",
+  "depth": "000123_depth.png",
+  "object": "micropipette",
+  "task": "press",
+  "instruction": "press the plunger of the pipette",
+  "points": [[320, 120]],
+  "mask": "000123_press_mask.png"
+}
+```
+
+Gaussian mask 可以这样理解：
+
+```text
+pick_up / move: sigma 大一点，形成较大可抓区域
+press / open: sigma 小一点，形成局部接触区域
+```
+
+建议：
+
+```text
+pick_up: sigma = 25-40 pixels
+move:    sigma = 25-40 pixels
+open:    sigma = 15-25 pixels
+press:   sigma = 10-20 pixels
+```
+
+如果是长条区域，例如 pipette body，可以点两个点，然后用椭圆或线段膨胀生成 mask。
+
+---
+
+### Day 3：训练一个小模型
+
+第一周模型不要复杂。建议：
+
+```text
+Input:
+RGB image resized to 256x256
+task embedding
+
+Output:
+256x256 affordance probability mask
+```
+
+模型结构：
+
+```text
+ResNet18 encoder
++
+task embedding projected to feature dimension
++
+concat / FiLM fusion at bottleneck
++
+U-Net decoder
+```
+
+Loss：
+
+```text
+BCEWithLogitsLoss + Dice loss
+```
+
+如果你用 Gaussian soft mask，可以用：
+
+```text
+BCE + MSE
+```
+
+训练设置：
+
+```text
+train/val split: 80/20
+batch size: 8 or 16
+epochs: 50-100
+learning rate: 1e-4 或 3e-4
+augmentation: random crop, brightness, contrast, small rotation
+```
+
+第一版训练指标：
+
+```text
+mIoU
+Dice
+Top-1 point accuracy
+```
+
+其中 Top-1 point accuracy 很重要：
+
+```text
+预测 mask 最大概率点是否落在 GT affordance region 内
+```
+
+因为机器人最后只需要选一个接触点。
+
+---
+
+### Day 4：做 baseline 和可视化
+
+必须做 baseline，不然 demo 说服力不够。
+
+最少做 3 个对照：
+
+```text
+Baseline 1: object center
+直接取物体 mask / bbox 中心作为接触点
+
+Baseline 2: full object mask
+把整个物体区域都当作 affordance
+
+Baseline 3: task-agnostic affordance
+不输入 task，只预测一个通用可抓区域
+
+Ours: task-conditioned affordance
+输入 task，预测不同区域
+```
+
+你要重点展示这种图：
+
+```text
+同一张 pipette 图片：
+
+Instruction: pick up the pipette
+Prediction: handle/body
+
+Instruction: press the plunger
+Prediction: top button
+
+同一张 bottle 图片：
+
+Instruction: pick up the bottle
+Prediction: body
+
+Instruction: open the bottle
+Prediction: cap
+```
+
+这张图就是你整个小工作的核心证据。
+
+---
+
+### Day 5：把 affordance mask 转成 3D contact point
+
+因为是不透明物体，RGB-D 深度可以直接用。流程如下：
+
+```text
+1. 取预测 affordance mask 中 top 5% 概率区域
+2. 在 top region 中找有效 depth pixels
+3. 取这些点的中位数或最高概率点
+4. 用 camera intrinsics 反投影到 3D
+5. 用 camera-to-robot transform 转到 robot base frame
+6. 生成 robot approach pose
+```
+
+接触点选择建议：
+
+```text
+press/open:
+选择最大概率点
+
+pick_up/move:
+选择 top region 的中心点，并尽量远离物体边界
+```
+
+如果是 parallel gripper，第一周不要做复杂 6D grasp pose。可以用简单规则：
+
+```text
+pipette pick_up:
+沿物体主轴垂直方向夹取
+
+bottle pick_up:
+从左右两侧夹取 body
+
+petri dish move:
+从侧边夹取或用吸盘/夹爪接触外边缘
+
+press plunger:
+用夹爪一侧或末端执行器做 top-down pressing
+
+open cap / open lid:
+第一周可以先做 reach-and-touch，而不是完整旋开
+```
+
+注意：第一周的真机成功标准可以先定义成 **contact success**，不是完整 manipulation success。
+
+---
+
+### Day 6：真机小实验
+
+建议做 12–18 次，不要太多。
+
+实验表可以这样设计：
+
+```text
+Object          Task       Trials
+micropipette    pick_up    3
+micropipette    press      3
+bottle          pick_up    3
+bottle          open_cap   3
+petri dish      move       3
+petri dish      open_lid   3
+```
+
+成功标准：
+
+```text
+pick_up:
+夹爪接触到正确 affordance region，并能稳定抬起/移动 5 cm
+
+press:
+末端执行器接触 plunger 区域，方向正确，没有碰到 body 其他区域
+
+open_cap:
+末端执行器到达 cap 区域；如果暂时不能旋开，先算 contact success
+
+open_lid:
+接触 lid edge；能轻微推动/抬起更好
+
+move:
+接触 side wall / outer edge，没有碰到 forbidden region
+```
+
+你可以记录：
+
+```text
+contact success rate
+task-correct contact rate
+3D contact error
+failure cases
+```
+
+第一周 demo 不需要成功率很高，只要能证明：
+
+```text
+不同 instruction -> 不同 affordance mask -> 不同 robot contact point
+```
+
+就够了。
+
+---
+
+### Day 7：整理结果和下周讨论材料
+
+你需要准备 4 张图/表：
+
+```text
+1. Dataset examples:
+   image + instruction + GT affordance mask
+
+2. Prediction examples:
+   same image, different tasks, different predicted masks
+
+3. Quantitative table:
+   object center vs full mask vs task-conditioned model
+
+4. Robot demo:
+   keyframes or video snapshots
+```
+
+表格可以这样：
+
+```text
+Method              Top-1 Acc ↑    mIoU ↑    Robot Contact SR ↑
+Object center       ...
+Full object mask    ...
+Task-agnostic       ...
+Ours task-cond.     ...
+```
+
+下周讨论时，你可以说：
+
+> 我们没有先做大规模 open-vocabulary affordance，而是先验证 lab 场景下 task-conditioned affordance 的必要性。同一个实验器具，在不同任务下需要不同接触区域。小模型已经能从 task input 预测不同 affordance mask，并可以通过 RGB-D 投影到 3D，指导机器人接触。
+
+## 第一周最小技术路线总结
+
+```text
+Data:
+150-240 RGB-D images of 3 opaque lab objects
+
+Annotation:
+task-specific affordance points / Gaussian masks
+
+Model:
+small task-conditioned U-Net
+
+Input:
+RGB + task ID / simple instruction
+
+Output:
+affordance probability mask
+
+3D grounding:
+RGB-D depth back-projection
+
+Robot:
+reach/contact/grasp simple regions
+
+Evaluation:
+Top-1 contact accuracy + robot contact success rate
+```
+
+## 关键取舍
+
+第一周不要做这些：
+
+```text
+不要做 open-vocabulary 任意指令
+不要做透明物体
+不要做复杂开盖/旋拧
+不要做大模型 LLaVA/GLOVER full fine-tuning
+不要做多物体 cluttered scene
+```
+
+第一周只做：
+
+```text
+少数固定任务
+少数不透明物体
+小模型
+可视化 + 真机 contact demo
+```
+
+这样一周内是有机会跑通的。等这个小闭环成立后，再扩展到透明器皿、多视角、几何先验和更复杂任务。
