@@ -1,280 +1,336 @@
-![](assets/logo.png)
+# Transparent Glassware Affordance Reasoning and Primitive Recovery
 
-# Fast Segment Anything
+This repository is a **research prototype for transparent laboratory glassware manipulation**, built **on top of the original FastSAM project**.
 
-[[`📕Paper`](https://arxiv.org/pdf/2306.12156.pdf)] [[`🤗HuggingFace Demo`](https://huggingface.co/spaces/An-619/FastSAM)] [[`Colab demo`](https://colab.research.google.com/drive/1oX14f6IneGGw612WgVlAiy91UHwFAvr9?usp=sharing)] [[`Replicate demo & API`](https://replicate.com/casia-iva-lab/fastsam)] [~~[`OpenXLab Demo`](https://openxlab.org.cn/apps/detail/zxair/FastSAM)~~] [[`Model Zoo`](#model-checkpoints)] [[`BibTeX`](#citing-fastsam)] [[`Video Demo`](https://youtu.be/yHNPyqazYYU)]
+The current work extends the original FastSAM codebase toward two connected goals:
 
-![FastSAM Speed](assets/head_fig.png)
+1. **Task-conditioned affordance reasoning**
+   - Given an image and a task instruction, predict an affordance heatmap indicating where the object should be contacted.
 
-The **Fast Segment Anything Model(FastSAM)** is a CNN Segment Anything Model trained using only 2% of the SA-1B dataset published by SAM authors. FastSAM achieves comparable performance with
-the SAM method at **50× higher run-time speed**.
+2. **Primitive / compound primitive recovery**
+   - Recover a structured geometric representation for transparent glassware from RGB-D observations.
+   - Use the recovered geometry as a stable intermediate representation for downstream contact or grasp proposal generation.
 
-![FastSAM design](assets/Overview.png)
+This repository is **not** the original FastSAM release anymore. It is now a project workspace containing:
 
-**🍇 Updates**
-- **`2024/6/25`** The edge jaggies issue has been slightly improved [#231](https://github.com/CASIA-IVA-Lab/FastSAM/pull/231), and the strategy has also been synchronized to the ultralytics project[#13939](https://github.com/ultralytics/ultralytics/pull/13939),[#13912](https://github.com/ultralytics/ultralytics/pull/13912). The [huggingface demo](https://huggingface.co/spaces/An-619/FastSAM) is updated.
-- **`2023/11/28`** Recommendation: [Semantic FastSAM](https://github.com/KBH00/Semantic-Fast-SAM), which add the semantic class labels to FastSAM. Thanks to [KBH00](https://github.com/KBH00/Semantic-Fast-SAM) for this valuable contribution.
-- **`2023/09/11`** Release  [Training and Validation Code](https://github.com/CASIA-IVA-Lab/FastSAM/releases).
-- **`2023/08/17`** Release  [OpenXLab Demo](https://openxlab.org.cn/apps/detail/zxair/FastSAM). Thanks to OpenXLab Team for help.
-- **`2023/07/06`** Added to [Ultralytics (YOLOv8) Model Hub](https://docs.ultralytics.com/models/fast-sam/). Thanks to [Ultralytics](https://github.com/ultralytics/ultralytics) for help 🌹.
-- **`2023/06/29`** Support [text mode](https://huggingface.co/spaces/An-619/FastSAM) in HuggingFace Space. Thanks a lot to [gaoxinge](https://github.com/gaoxinge) for help 🌹.
-- **`2023/06/29`** Release [FastSAM_Awesome_TensorRT](https://github.com/ChuRuaNh0/FastSam_Awsome_TensorRT). Thanks a lot to [ChuRuaNh0](https://github.com/ChuRuaNh0) for providing the TensorRT model of FastSAM 🌹.
-- **`2023/06/26`** Release [FastSAM Replicate Online Demo](https://replicate.com/casia-iva-lab/fastsam). Thanks a lot to [Chenxi](https://chenxwh.github.io/) for providing this nice demo 🌹.
-- **`2023/06/26`** Support [points mode](https://huggingface.co/spaces/An-619/FastSAM) in HuggingFace Space. Better and faster interaction will come soon!
-- **`2023/06/24`** Thanks a lot to [Grounding-SAM](https://github.com/IDEA-Research/Grounded-Segment-Anything) for Combining Grounding-DINO with FastSAM in [Grounded-FastSAM](https://github.com/IDEA-Research/Grounded-Segment-Anything/tree/main/EfficientSAM) 🌹.
+- the original FastSAM segmentation codebase as a base dependency
+- a lightweight affordance learning pipeline
+- a chem-lab HOVA-style affordance dataset
+- primitive fitting prototypes for glassware
 
-## Installation
+---
 
-Clone the repository locally:
+## 1. Project Motivation
 
-```shell
-git clone https://github.com/CASIA-IVA-Lab/FastSAM.git
+Transparent laboratory glassware is difficult for robot perception because:
+
+- raw RGB-D depth is often noisy, missing, or aligned to the background
+- object boundaries are unstable due to transparency and reflections
+- generic segmentation or grasp detection is usually not enough for manipulation
+
+At the same time, glassware has **strong geometric priors**:
+
+- beaker ≈ open cylinder
+- glass rod ≈ cylinder / capsule
+- flask ≈ frustum + neck cylinder
+- dropper bottle ≈ body cylinder + neck + cap
+
+This project treats glassware manipulation as a **structured perception problem**:
+
+```text
+RGB / RGB-D + instruction
+    -> task-conditioned affordance heatmap
+    -> primitive / compound primitive recovery
+    -> part-level affordance surface
+    -> contact / grasp proposal
 ```
 
-Create the conda env. The code requires `python>=3.7`, as well as `pytorch>=1.7` and `torchvision>=0.8`. Please follow the instructions [here](https://pytorch.org/get-started/locally/) to install both PyTorch and TorchVision dependencies. Installing both PyTorch and TorchVision with CUDA support is strongly recommended.
+---
 
-```shell
-conda create -n FastSAM python=3.9
-conda activate FastSAM
+## 2. Relationship to the Original FastSAM
+
+This repository is **based on the original FastSAM project** from CASIA-IVA-Lab.
+
+FastSAM is still used here as a practical segmentation component for:
+
+- quick object masking
+- ROI extraction
+- dataset bootstrapping
+- debugging and prototyping
+
+However, the main research target of this repository is no longer “segment anything”.
+
+The focus has shifted to:
+
+- transparent glassware affordance reasoning
+- HOVA-style supervision generation
+- lightweight instruction-conditioned heatmap prediction
+- structured primitive fitting and geometric recovery
+
+So if you are looking for the original upstream FastSAM README, model description, or benchmarks, this repository is no longer the right reference. This README documents **the current research project state** instead.
+
+---
+
+## 3. Main Components
+
+### 3.1 `affordance/`
+
+This package contains the current affordance learning pipeline.
+
+Main functionality:
+
+- lightweight text-conditioned affordance prediction
+- synthetic smoke dataset support
+- chem-HOVA full-image training
+- inference and batch inference utilities
+
+Important files:
+
+- `affordance/train_chem_hova.py`
+  - full-image affordance training on `chem_hova_dataset`
+- `affordance/infer_chem_hova.py`
+  - single-image inference for the full-image affordance model
+- `affordance/run_batch_infer_chem_hova.py`
+  - batch inference over the full test split
+- `affordance/models/text_encoder.py`
+  - MiniLM-based text encoder
+- `affordance/models/glover_lite_fullimg.py`
+  - GLOVER-lite full-image affordance model
+
+### 3.2 `chem_hova_dataset/`
+
+This is a HOVA-style chemistry affordance dataset derived from an existing RGB dataset.
+
+It contains:
+
+- `images/{train,val,test}`
+- `GT_gaussian/{train,val,test}`
+- `annotations/{train,val,test}/chem_lab_<split>.json`
+- `previews/{train,val,test}`
+- `tools/generate_chem_hova_from_yolo.py`
+
+The affordance supervision uses:
+
+- object/action-specific point selection
+- hand-written geometry rules
+- Gaussian heatmap generation
+
+This dataset is currently used to verify that the affordance training pipeline is runnable and convergent.
+
+### 3.3 `primitive_recovery/`
+
+This package contains early primitive fitting code.
+
+Current status:
+
+- a simple MVP for **beaker fitting**
+- parameter initialization from mask + depth
+- mask/depth/contour/prior losses
+- rendered mask/depth visualization
+
+Important files:
+
+- `primitive_recovery/fit_beaker.py`
+  - fit a simple beaker primitive from mask and depth
+- `primitive_recovery/generate_beaker_masks_with_fastsam.py`
+  - generate batch beaker masks for a RealSense sequence with FastSAM
+- `primitive_recovery/templates.py`
+  - primitive parameter structure
+- `primitive_recovery/render_beaker.py`
+  - simple beaker rendering utilities
+- `primitive_recovery/losses.py`
+  - fitting losses
+
+This part is still an MVP and should be treated as an evolving prototype rather than a finished primitive recovery system.
+
+### 3.4 `real_dataset/`
+
+This contains captured real RGB-D sequences, including:
+
+- `real_dataset/realsense_dataset/<id>/rgb`
+- `real_dataset/realsense_dataset/<id>/depth`
+- `real_dataset/realsense_dataset/<id>/depth_completed`
+
+These data are used for:
+
+- mask extraction
+- primitive fitting experiments
+- qualitative structured perception debugging
+
+---
+
+## 4. Environment
+
+Per project convention:
+
+> Always use the `fastsam-annot` conda environment as the Python environment for this project.
+
+Typical usage:
+
+```bash
+conda activate fastsam-annot
+cd /home/dsj/FastSAM
 ```
 
-Install the packages:
+---
 
-```shell
-cd FastSAM
-pip install -r requirements.txt
+## 5. Current Workflows
+
+## 5.1 Train the full-image affordance baseline
+
+Example:
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com python -m affordance.train_chem_hova \
+  --dataset-root /home/dsj/FastSAM/chem_hova_dataset \
+  --save-dir affordance_runs/chem_hova_fullimg \
+  --epochs 1 \
+  --batch-size 4 \
+  --image-size 384 \
+  --device cuda
 ```
 
-Install CLIP(Required if the text prompt is being tested.):
+If CUDA is unavailable, replace `--device cuda` with `--device cpu`.
 
-```shell
-pip install git+https://github.com/openai/CLIP.git
+## 5.2 Run single-image affordance inference
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com python -m affordance.infer_chem_hova \
+  --checkpoint /home/dsj/FastSAM/affordance_runs/chem_hova_fullimg/best.pt \
+  --rgb /home/dsj/FastSAM/chem_hova_dataset/images/test/ce_000006.jpg \
+  --instruction "Where should I interact with the Alcohol lamp to hold it?" \
+  --output-dir /home/dsj/FastSAM/affordance_outputs/chem_hova_test \
+  --device cuda
 ```
 
-## <a name="GettingStarted"></a> Getting Started
+## 5.3 Run batch affordance inference on the test set
 
-
-First download a [model checkpoint](#model-checkpoints).
-
-Then, you can run the scripts to try the everything mode and three prompt modes.
-
-```shell
-# Everything mode
-python Inference.py --model_path ./weights/FastSAM.pt --img_path ./images/dogs.jpg
+```bash
+HF_ENDPOINT=https://hf-mirror.com python -m affordance.run_batch_infer_chem_hova \
+  --dataset-root /home/dsj/FastSAM/chem_hova_dataset \
+  --checkpoint /home/dsj/FastSAM/affordance_runs/chem_hova_fullimg_e5/best.pt \
+  --output-root /home/dsj/FastSAM/affordance_outputs/chem_hova_test_all \
+  --device cuda
 ```
 
-```shell
-# Text prompt
-python Inference.py --model_path ./weights/FastSAM.pt --img_path ./images/dogs.jpg  --text_prompt "the yellow dog"
+## 5.4 Generate beaker masks for a RealSense sequence using FastSAM
+
+```bash
+python segpredict.py
 ```
 
-```shell
-# Box prompt (xywh)
-python Inference.py --model_path ./weights/FastSAM.pt --img_path ./images/dogs.jpg --box_prompt "[[570,200,230,400]]"
+By default this processes:
+
+- input:
+  - `/home/dsj/FastSAM/real_dataset/realsense_dataset/4/rgb`
+- output masks:
+  - `/home/dsj/FastSAM/real_dataset/realsense_dataset/4/masks_fastsam_beaker`
+- output previews:
+  - `/home/dsj/FastSAM/real_dataset/realsense_dataset/4/previews_fastsam_beaker`
+
+## 5.5 Fit a simple beaker primitive from mask + depth
+
+```bash
+python -m primitive_recovery.fit_beaker \
+  --mask /home/dsj/FastSAM/real_dataset/realsense_dataset/4/masks_fastsam_beaker/000000.png \
+  --depth /home/dsj/FastSAM/real_dataset/realsense_dataset/4/depth_completed/000000.png \
+  --output-dir /home/dsj/FastSAM/primitive_outputs/beaker_fit_000000 \
+  --fx 605.74 \
+  --fy 605.42 \
+  --cx 335.28 \
+  --cy 249.04 \
+  --maxiter 120
 ```
 
-```shell
-# Points prompt
-python Inference.py --model_path ./weights/FastSAM.pt --img_path ./images/dogs.jpg  --point_prompt "[[520,360],[620,300]]" --point_label "[1,0]"
-```
+This is currently a simplified MVP:
 
-You can use the following code to generate all masks and visualize the results.
-```shell
-from fastsam import FastSAM, FastSAMPrompt
+- the primitive model is still rough
+- the optimization is not yet a full 3D transparent glassware solution
+- results should be interpreted as a structural debugging prototype
 
-model = FastSAM('./weights/FastSAM.pt')
-IMAGE_PATH = './images/dogs.jpg'
-DEVICE = 'cpu'
-everything_results = model(IMAGE_PATH, device=DEVICE, retina_masks=True, imgsz=1024, conf=0.4, iou=0.9,)
-prompt_process = FastSAMPrompt(IMAGE_PATH, everything_results, device=DEVICE)
+---
 
-# everything prompt
-ann = prompt_process.everything_prompt()
+## 6. Current Research Status
 
-prompt_process.plot(annotations=ann,output_path='./output/dog.jpg',)
+### Affordance side
 
-```
-For point/box/text mode prompts, use:
-```
-# bbox default shape [0,0,0,0] -> [x1,y1,x2,y2]
-ann = prompt_process.box_prompt(bboxes=[[200, 200, 300, 300]])
+What is already working:
 
-# text prompt
-ann = prompt_process.text_prompt(text='a photo of a dog')
+- chem-HOVA style dataset construction
+- full-image instruction-conditioned affordance training
+- stable loss decrease on the current baseline
+- test-time batch visualization
 
-# point prompt
-# points default [[0,0]] [[x1,y1],[x2,y2]]
-# point_label default [0] [1,0] 0:background, 1:foreground
-ann = prompt_process.point_prompt(points=[[620, 360]], pointlabel=[1])
+What it currently means:
 
-prompt_process.plot(annotations=ann,output_path='./output/dog.jpg',)
+- the data format is usable
+- the training pipeline is functional
+- the GLOVER-inspired affordance direction is technically feasible in this codebase
 
-```
+What it does **not** yet mean:
 
-You are also welcomed to try our Colab demo: [FastSAM_example.ipynb](https://colab.research.google.com/drive/1oX14f6IneGGw612WgVlAiy91UHwFAvr9?usp=sharing).
+- transparent glassware manipulation is solved
+- final affordance quality is already sufficient
+- the current baseline is the final model
 
+### Primitive side
 
+What is already working:
 
-## Different Inference Options
+- basic parameterized beaker model
+- initialization from mask and depth
+- optimization loop with several geometric losses
+- rendered mask/depth outputs for debugging
 
-We provide various options for different purposes, details are in [MORE_USAGES.md](MORE_USAGES.md).
+What is not yet finished:
 
-## Training or Validation
-Training from scratch or validation: [Training and Validation Code](https://github.com/CASIA-IVA-Lab/FastSAM/releases).
+- reliable object masks from real sequences
+- true category-conditioned primitive library
+- compound primitive fitting
+- robust use of real aligned camera intrinsics
+- integration with affordance surface reasoning
+- 3D contact/grasp proposal synthesis
 
-## Web demo
+---
 
-### Gradio demo
+## 7. Important Limitations
 
-- We also provide a UI for testing our method that is built with gradio. You can upload a custom image, select the mode and set the parameters, click the segment button, and get a satisfactory segmentation result. Currently, the UI supports interaction with the 'Everything mode' and 'points mode'. We plan to add support for additional modes in the future. Running the following command in a terminal will launch the demo:
+This repository currently contains several **MVP / prototype** modules.
 
-```
-# Download the pre-trained model in "./weights/FastSAM.pt"
-python app_gradio.py
-```
+Please keep the following in mind:
 
-- This demo is also hosted on [HuggingFace Space](https://huggingface.co/spaces/An-619/FastSAM).
+- `primitive_recovery/` is not a final glassware fitting system
+- some scripts still use simplified assumptions or coarse masks
+- RealSense intrinsics and depth alignment should be verified before reporting geometry results
+- transparent-object depth quality remains a key bottleneck
+- the affordance baseline is a proof-of-pipeline result, not a final benchmark claim
 
-![HF_Everyhting](assets/hf_everything_mode.png) ![HF_Points](assets/hf_points_mode.png)
+---
 
-### Replicate demo
+## 8. Suggested Next Steps
 
-- [Replicate demo](https://replicate.com/casia-iva-lab/fastsam) has supported all modes, you can experience points/box/text mode.
+The most reasonable near-term progression is:
 
-![Replicate-1](assets/replicate-1.png) ![Replicate-2](assets/replicate-2.png) ![Replicate-3](assets/replicate-3.png)
+1. improve real glassware masks
+2. validate primitive fitting on real completed depth
+3. upgrade beaker primitive to better express rim / taper / base structure
+4. extend to more glassware categories:
+   - glass rod
+   - flask
+   - dropper bottle
+5. project affordance heatmaps to primitive surfaces
+6. synthesize task-conditioned 3D contact or grasp proposals
 
-## <a name="Models"></a>Model Checkpoints
+---
 
-Two model versions of the model are available with different sizes. Click the links below to download the checkpoint for the corresponding model type.
+## 9. Acknowledgement
 
-- **`default` or `FastSAM`: [YOLOv8x based Segment Anything Model](https://drive.google.com/file/d/1m1sjY4ihXBU1fZXdQ-Xdj-mDltW-2Rqv/view?usp=sharing) | [Baidu Cloud (pwd: 0000).](https://pan.baidu.com/s/18KzBmOTENjByoWWR17zdiQ?pwd=0000)**
-- `FastSAM-s`: [YOLOv8s based Segment Anything Model.](https://drive.google.com/file/d/10XmSj6mmpmRb8NhXbtiuO9cTTBwR_9SV/view?usp=sharing)
+This project is **based on the original FastSAM codebase** and keeps that code as an important underlying component for segmentation and prototyping.
 
-## Results
+We acknowledge:
 
-All result were tested on a single NVIDIA GeForce RTX 3090.
+- the original **FastSAM** project by CASIA-IVA-Lab
+- the **Ultralytics** integration used inside the repository
+- the conceptual inspiration from **GLOVER** for task-conditioned affordance reasoning
 
-### 1. Inference time
-
-Running Speed under Different Point Prompt Numbers(ms).
-| method | params | 1 | 10 | 100 | E(16x16) | E(32x32\*) | E(64x64) |
-|:------------------:|:--------:|:-----:|:-----:|:-----:|:----------:|:-----------:|:----------:|
-| SAM-H | 0.6G | 446 | 464 | 627 | 852 | 2099 | 6972 |
-| SAM-B | 136M | 110 | 125 | 230 | 432 | 1383 | 5417 |
-| FastSAM | 68M | 40 |40 | 40 | 40 | 40 | 40 |
-
-### 2. Memory usage
-
-|  Dataset  | Method  | GPU Memory (MB) |
-| :-------: | :-----: | :-------------: |
-| COCO 2017 | FastSAM |      2608       |
-| COCO 2017 |  SAM-H  |      7060       |
-| COCO 2017 |  SAM-B  |      4670       |
-
-### 3. Zero-shot Transfer Experiments
-
-#### Edge Detection
-
-Test on the BSDB500 dataset.
-|method | year| ODS | OIS | AP | R50 |
-|:----------:|:-------:|:--------:|:--------:|:------:|:-----:|
-| HED | 2015| .788 | .808 | .840 | .923 |
-| SAM | 2023| .768 | .786 | .794 | .928 |
-| FastSAM | 2023| .750 | .790 | .793 | .903 |
-
-#### Object Proposals
-
-##### COCO
-
-|  method   | AR10 | AR100 | AR1000 | AUC  |
-| :-------: | :--: | :---: | :-----: | :--: |
-| SAM-H E64 | 15.5 | 45.6  |   67.7 | 32.1 |
-| SAM-H E32 | 18.5 | 49.5  |   62.5 | 33.7 |
-| SAM-B E32 | 11.4 | 39.6  |   59.1 | 27.3 |
-|  FastSAM  | 15.7 | 47.3  |   63.7 | 32.2 |
-
-##### LVIS
-
-bbox AR@1000
-| method | all | small | med. | large |
-|:---------------:|:-----:|:------:|:-----:|:------:|
-| ViTDet-H | 65.0 | 53.2 | 83.3 | 91.2 |
-zero-shot transfer methods
-| SAM-H E64 | 52.1 | 36.6 | 75.1 | 88.2 |
-| SAM-H E32 | 50.3 | 33.1 | 76.2 | 89.8 |
-| SAM-B E32 | 45.0 | 29.3 | 68.7 | 80.6 |
-| FastSAM | 57.1 | 44.3 | 77.1 | 85.3 |
-
-#### Instance Segmentation On COCO 2017
-
-|  method  |  AP  | APS  | APM  | APL  |
-| :------: | :--: | :--: | :--: | :--: |
-| ViTDet-H | .510 | .320 | .543 | .689 |
-|   SAM    | .465 | .308 | .510 | .617 |
-| FastSAM  | .379 | .239 | .434 | .500 |
-
-### 4. Performance Visualization
-
-Several segmentation results:
-
-#### Natural Images
-
-![Natural Images](assets/eightpic.png)
-
-#### Text to Mask
-
-![Text to Mask](assets/dog_clip.png)
-
-### 5.Downstream tasks
-
-The results of several downstream tasks to show the effectiveness.
-
-#### Anomaly Detection
-
-![Anomaly Detection](assets/anomaly.png)
-
-#### Salient Object Detection
-
-![Salient Object Detection](assets/salient.png)
-
-#### Building Extracting
-
-![Building Detection](assets/building.png)
-
-## License
-
-The model is licensed under the [Apache 2.0 license](LICENSE).
-
-## Acknowledgement
-
-- [Segment Anything](https://segment-anything.com/) provides the SA-1B dataset and the base codes.
-- [YOLOv8](https://github.com/ultralytics/ultralytics) provides codes and pre-trained models.
-- [YOLACT](https://arxiv.org/abs/2112.10003) provides powerful instance segmentation method.
-- [Grounded-Segment-Anything](https://huggingface.co/spaces/yizhangliu/Grounded-Segment-Anything) provides a useful web demo template.
-
-## Contributors
-
-Our project wouldn't be possible without the contributions of these amazing people! Thank you all for making this project better.
-
-
-<a href="https://github.com/CASIA-IVA-Lab/FastSAM/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=CASIA-IVA-Lab/FastSAM" />
-</a>
-
-
-## Citing FastSAM
-
-If you find this project useful for your research, please consider citing the following BibTeX entry.
-
-```
-@misc{zhao2023fast,
-      title={Fast Segment Anything},
-      author={Xu Zhao and Wenchao Ding and Yongqi An and Yinglong Du and Tao Yu and Min Li and Ming Tang and Jinqiao Wang},
-      year={2023},
-      eprint={2306.12156},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
-}
-```
-
-[![Star History Chart](https://api.star-history.com/svg?repos=CASIA-IVA-Lab/FastSAM&type=Date)](https://star-history.com/#CASIA-IVA-Lab/FastSAM&Date)
+If you want to cite the original segmentation backbone or compare with the upstream project, please cite the original FastSAM work separately.
