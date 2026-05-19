@@ -14,6 +14,7 @@ synthetic_affordance_dataset_smoke/
 affordance_runs/
 affordance_outputs/
 affordance_annotation/
+real_dataset/
 
 # 忽略本地临时配置文件和 PDF、PPT
 .vscode/
