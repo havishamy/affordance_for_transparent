@@ -1,0 +1,79 @@
+{
+  "success": false,
+  "message": "Maximum number of iterations has been exceeded.",
+  "final_loss": 15.88981017200377,
+  "nfev": 75,
+  "initial_params": {
+    "x": -3.367762804031372,
+    "y": 38.254364013671875,
+    "z": 281.12066650390625,
+    "roll": 0.39341518252064,
+    "pitch": -0.008962401962770466,
+    "yaw": 0.02158975940739154,
+    "radius": 41.948690857463596,
+    "height": 119.3716758613855
+  },
+  "final_params": {
+    "x": -3.409652446045129,
+    "y": 40.62609733170793,
+    "z": 365.2913710581103,
+    "roll": 0.39341518252064,
+    "pitch": -0.008962401962770466,
+    "yaw": 0.02158975940739154,
+    "radius": 40.85852093066328,
+    "height": 119.37491991291849
+  },
+  "convergence": {
+    "optimizer_success": true,
+    "loss_stable": true,
+    "parameters_reasonable": true,
+    "visual_fit_reasonable": true,
+    "overall_trustworthy": true,
+    "final_mask_iou": 0.8762696502835806,
+    "final_height_radius_ratio": 2.92166522903502,
+    "table_axis_error": 0.0
+  },
+  "initialization": {
+    "source": "depth_plane_ransac",
+    "pose_locked_during_optimization": true,
+    "height_px": 219.0,
+    "radius_px": 77.0,
+    "height_metric": 119.3716758613855,
+    "init_center_world": [
+      -3.367762804031372,
+      38.254364013671875,
+      281.12066650390625
+    ],
+    "init_contact_world": [
+      -4.1554460525512695,
+      91.86984252929688,
+      304.0
+    ]
+  },
+  "table_plane": {
+    "source": "depth_plane_ransac",
+    "normal": [
+      0.023373711854219437,
+      -0.9233158826828003,
+      -0.3833295404911041
+    ],
+    "offset": 179.3053436279297,
+    "point_count": 6363,
+    "rms_error": 2.935544729232788
+  },
+  "table_plane_visualization": {
+    "anchor_pixel": [
+      419,
+      294
+    ],
+    "normal_tip_pixel": [
+      429,
+      177
+    ],
+    "axis_tip_pixel": [
+      410,
+      395
+    ],
+    "arrow_length_mm": 80.0
+  }
+}

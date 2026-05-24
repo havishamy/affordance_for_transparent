@@ -3,7 +3,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from primitive_recovery.geometry import estimate_top_width, principal_axis
+from primitive_recovery.geometry import bbox_from_mask, estimate_top_width, mask_centroid, point_plane_signed_distance, principal_axis, rpy_to_rotation_matrix
 
 
 def mask_iou_loss(rendered_mask: np.ndarray, observed_mask: np.ndarray, eps: float = 1e-6) -> float:
@@ -65,7 +65,25 @@ def top_width_loss(rendered_mask: np.ndarray, observed_mask: np.ndarray) -> floa
     return abs(wr - wo) / wo
 
 
-def prior_regularization(radius: float, height: float) -> float:
+def centroid_alignment_loss(rendered_mask: np.ndarray, observed_mask: np.ndarray) -> float:
+    try:
+        cr = mask_centroid(rendered_mask)
+        co = mask_centroid(observed_mask)
+    except ValueError:
+        return 1e3
+    return float(np.linalg.norm(cr - co))
+
+
+def bottom_alignment_loss(rendered_mask: np.ndarray, observed_mask: np.ndarray) -> float:
+    try:
+        _, _, _, y2_r = bbox_from_mask(rendered_mask)
+        _, _, _, y2_o = bbox_from_mask(observed_mask)
+    except ValueError:
+        return 1e3
+    return abs(float(y2_r - y2_o))
+
+
+def prior_regularization(radius: float, height: float, roll: float, pitch: float) -> float:
     penalties = 0.0
     if radius <= 0:
         penalties += 1000.0
@@ -78,3 +96,32 @@ def prior_regularization(radius: float, height: float) -> float:
         penalties += (ratio - 8.0) * 10.0
     return float(penalties)
 
+
+def axis_alignment_loss(
+    roll: float,
+    pitch: float,
+    yaw: float,
+    target_axis: np.ndarray,
+) -> float:
+    rot = rpy_to_rotation_matrix(roll, pitch, yaw)
+    current_axis = rot[:, 1]
+    current_axis = current_axis / (np.linalg.norm(current_axis) + 1e-8)
+    target_axis = target_axis / (np.linalg.norm(target_axis) + 1e-8)
+    cosine = float(np.clip(np.dot(current_axis, target_axis), -1.0, 1.0))
+    return 1.0 - cosine
+
+
+def plane_contact_loss(
+    center_xyz: np.ndarray,
+    height: float,
+    roll: float,
+    pitch: float,
+    yaw: float,
+    plane_normal: np.ndarray,
+    plane_offset: float,
+) -> float:
+    rot = rpy_to_rotation_matrix(roll, pitch, yaw)
+    axis = rot[:, 1]
+    bottom_center = center_xyz + axis * (0.5 * height)
+    signed_distance = float(point_plane_signed_distance(bottom_center[None, :], plane_normal, plane_offset)[0])
+    return abs(signed_distance)
