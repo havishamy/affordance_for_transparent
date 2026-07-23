@@ -13,8 +13,11 @@ class JarParams:
     yaw: float
     body_radius: float
     body_height: float
-    lid_radius: float
-    lid_height: float
+    shoulder_height: float
+    neck_radius: float
+    neck_height: float
+    lip_radius: float
+    lip_height: float
 
     def to_vector(self) -> list[float]:
         return [
@@ -26,13 +29,16 @@ class JarParams:
             self.yaw,
             self.body_radius,
             self.body_height,
-            self.lid_radius,
-            self.lid_height,
+            self.shoulder_height,
+            self.neck_radius,
+            self.neck_height,
+            self.lip_radius,
+            self.lip_height,
         ]
 
     @classmethod
     def from_vector(cls, values: list[float] | tuple[float, ...]) -> "JarParams":
-        x, y, z, roll, pitch, yaw, body_radius, body_height, lid_radius, lid_height = values
+        x, y, z, roll, pitch, yaw, body_radius, body_height, shoulder_height, neck_radius, neck_height, lip_radius, lip_height = values
         return cls(
             x=float(x),
             y=float(y),
@@ -42,8 +48,11 @@ class JarParams:
             yaw=float(yaw),
             body_radius=float(body_radius),
             body_height=float(body_height),
-            lid_radius=float(lid_radius),
-            lid_height=float(lid_height),
+            shoulder_height=float(shoulder_height),
+            neck_radius=float(neck_radius),
+            neck_height=float(neck_height),
+            lip_radius=float(lip_radius),
+            lip_height=float(lip_height),
         )
 
 
@@ -51,6 +60,9 @@ def clip_jar_params(params: JarParams) -> JarParams:
     params.z = max(params.z, 10.0)
     params.body_radius = max(params.body_radius, 1.0)
     params.body_height = max(params.body_height, 2.0)
-    params.lid_radius = max(params.lid_radius, 1.0)
-    params.lid_height = max(params.lid_height, 1.0)
+    params.shoulder_height = max(params.shoulder_height, 1.0)
+    params.neck_radius = max(min(params.neck_radius, params.body_radius * 0.85), 1.0)
+    params.neck_height = max(params.neck_height, 1.0)
+    params.lip_radius = max(min(params.lip_radius, params.body_radius * 0.95), params.neck_radius)
+    params.lip_height = max(params.lip_height, 1.0)
     return params

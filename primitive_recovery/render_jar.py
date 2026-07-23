@@ -7,24 +7,72 @@ from primitive_recovery.geometry import CameraIntrinsics, project_camera_to_pixe
 from primitive_recovery.templates_jar import JarParams
 
 
-def _sample_cylinder_points(radius: float, height: float, n_theta: int, n_height: int) -> np.ndarray:
-    thetas = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False, dtype=np.float32)
-    ys = np.linspace(-0.5 * height, 0.5 * height, n_height, dtype=np.float32)
-    side_points = []
-    for y in ys:
-        x = radius * np.cos(thetas)
-        z_local = radius * np.sin(thetas)
-        pts = np.stack([x, np.full_like(x, y), z_local], axis=1)
-        side_points.append(pts)
-    side_points = np.concatenate(side_points, axis=0)
-    return side_points.astype(np.float32)
+def _sample_profile_points(params: JarParams, n_theta: int = 180) -> np.ndarray:
+    total_height = params.body_height + params.shoulder_height + params.neck_height + params.lip_height
+    y_bottom = 0.5 * total_height
+    y_body_top = y_bottom - params.body_height
+    y_shoulder_top = y_body_top - params.shoulder_height
+    y_neck_top = y_shoulder_top - params.neck_height
+    y_lip_top = y_neck_top - params.lip_height
 
+    n_body = max(24, int(round(params.body_height / max(total_height, 1e-6) * 120)))
+    n_shoulder = max(16, int(round(params.shoulder_height / max(total_height, 1e-6) * 80)))
+    n_neck = max(16, int(round(params.neck_height / max(total_height, 1e-6) * 60)))
+    n_lip = max(10, int(round(params.lip_height / max(total_height, 1e-6) * 32)))
 
-def _sample_disk(radius: float, y: float, n_theta: int = 180) -> np.ndarray:
+    ys = []
+    rs = []
+
+    body_ys = np.linspace(y_bottom, y_body_top, n_body, endpoint=False, dtype=np.float32)
+    body_rs = np.full_like(body_ys, params.body_radius)
+    ys.append(body_ys)
+    rs.append(body_rs)
+
+    shoulder_ys = np.linspace(y_body_top, y_shoulder_top, n_shoulder, endpoint=False, dtype=np.float32)
+    shoulder_t = np.linspace(0.0, 1.0, n_shoulder, endpoint=False, dtype=np.float32)
+    shoulder_rs = params.body_radius + (params.neck_radius - params.body_radius) * shoulder_t
+    ys.append(shoulder_ys)
+    rs.append(shoulder_rs)
+
+    neck_ys = np.linspace(y_shoulder_top, y_neck_top, n_neck, endpoint=False, dtype=np.float32)
+    neck_rs = np.full_like(neck_ys, params.neck_radius)
+    ys.append(neck_ys)
+    rs.append(neck_rs)
+
+    lip_ys = np.linspace(y_neck_top, y_lip_top, n_lip, endpoint=True, dtype=np.float32)
+    lip_t = np.linspace(0.0, 1.0, n_lip, endpoint=True, dtype=np.float32)
+    lip_rs = params.neck_radius + (params.lip_radius - params.neck_radius) * np.sin(lip_t * np.pi * 0.5)
+    ys.append(lip_ys)
+    rs.append(lip_rs)
+
+    ys = np.concatenate(ys, axis=0)
+    rs = np.concatenate(rs, axis=0)
     thetas = np.linspace(0.0, 2.0 * np.pi, n_theta, endpoint=False, dtype=np.float32)
-    x = radius * np.cos(thetas)
-    z = radius * np.sin(thetas)
-    return np.stack([x, np.full_like(x, y), z], axis=1).astype(np.float32)
+
+    points = []
+    for y, r in zip(ys, rs):
+        x = r * np.cos(thetas)
+        z_local = r * np.sin(thetas)
+        points.append(np.stack([x, np.full_like(x, y), z_local], axis=1))
+
+    top_rim = np.stack(
+        [
+            params.lip_radius * np.cos(thetas),
+            np.full_like(thetas, y_lip_top),
+            params.lip_radius * np.sin(thetas),
+        ],
+        axis=1,
+    )
+    bottom_rim = np.stack(
+        [
+            params.body_radius * np.cos(thetas),
+            np.full_like(thetas, y_bottom),
+            params.body_radius * np.sin(thetas),
+        ],
+        axis=1,
+    )
+    points.extend([top_rim, bottom_rim])
+    return np.concatenate(points, axis=0).astype(np.float32)
 
 
 def _transform(points_local: np.ndarray, params: JarParams) -> np.ndarray:
@@ -52,28 +100,15 @@ def render_jar_mask(params: JarParams, image_shape: tuple[int, int], intrinsics:
     h, w = image_shape
     mask = np.zeros((h, w), dtype=np.uint8)
 
-    body_local = _sample_cylinder_points(params.body_radius, params.body_height, n_theta=160, n_height=80)
-    lid_local = _sample_cylinder_points(params.lid_radius, params.lid_height, n_theta=120, n_height=20)
-
-    body_world = _transform(body_local, params)
-    lid_world = _transform(lid_local + np.asarray([0.0, -0.5 * params.body_height - 0.5 * params.lid_height, 0.0], dtype=np.float32), params)
-
-    body_pix, _ = _project(body_world, intrinsics)
-    lid_pix, _ = _project(lid_world, intrinsics)
-
-    all_pix = []
-    if len(body_pix) > 0:
-        all_pix.append(body_pix)
-    if len(lid_pix) > 0:
-        all_pix.append(lid_pix)
-    if not all_pix:
+    points_local = _sample_profile_points(params)
+    points_world = _transform(points_local, params)
+    pix, _ = _project(points_world, intrinsics)
+    if len(pix) == 0:
         return mask
 
-    pix = np.concatenate(all_pix, axis=0)
     pix_i = np.round(pix).astype(np.int32)
     pix_i[:, 0] = np.clip(pix_i[:, 0], 0, w - 1)
     pix_i[:, 1] = np.clip(pix_i[:, 1], 0, h - 1)
-
     hull = cv2.convexHull(pix_i.reshape(-1, 1, 2))
     cv2.fillConvexPoly(mask, hull[:, 0, :], 1)
     return mask
@@ -83,29 +118,25 @@ def render_jar_depth(params: JarParams, image_shape: tuple[int, int], intrinsics
     h, w = image_shape
     depth = np.zeros((h, w), dtype=np.float32)
 
-    body_local = _sample_cylinder_points(params.body_radius, params.body_height, n_theta=180, n_height=120)
-    lid_local = _sample_cylinder_points(params.lid_radius, params.lid_height, n_theta=120, n_height=30)
+    points_local = _sample_profile_points(params, n_theta=220)
+    points_world = _transform(points_local, params)
+    pix, z = _project(points_world, intrinsics)
+    if len(pix) == 0:
+        return depth
 
-    body_world = _transform(body_local, params)
-    lid_world = _transform(lid_local + np.asarray([0.0, -0.5 * params.body_height - 0.5 * params.lid_height, 0.0], dtype=np.float32), params)
-
-    for pts_world in [body_world, lid_world]:
-        pix, z = _project(pts_world, intrinsics)
-        if len(pix) == 0:
-            continue
-        pix_i = np.round(pix).astype(np.int32)
-        valid = (
-            (pix_i[:, 0] >= 0)
-            & (pix_i[:, 0] < w)
-            & (pix_i[:, 1] >= 0)
-            & (pix_i[:, 1] < h)
-        )
-        pix_i = pix_i[valid]
-        z = z[valid]
-        for (u, v), zz in zip(pix_i, z):
-            current = depth[v, u]
-            if current == 0 or zz < current:
-                depth[v, u] = zz
+    pix_i = np.round(pix).astype(np.int32)
+    valid = (
+        (pix_i[:, 0] >= 0)
+        & (pix_i[:, 0] < w)
+        & (pix_i[:, 1] >= 0)
+        & (pix_i[:, 1] < h)
+    )
+    pix_i = pix_i[valid]
+    z = z[valid]
+    for (u, v), zz in zip(pix_i, z):
+        current = depth[v, u]
+        if current == 0 or zz < current:
+            depth[v, u] = zz
 
     mask = render_jar_mask(params, image_shape, intrinsics)
     valid_u8 = (depth > 0).astype(np.uint8)

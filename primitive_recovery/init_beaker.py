@@ -63,7 +63,7 @@ def initialize_beaker_from_mask_and_depth(
 
     if table_plane is not None:
         axis_world = -table_plane.normal.astype(np.float32)
-        if axis_world[1] < 0:
+        if axis_world[1] > 0:
             axis_world = -axis_world
         rot = rotation_matrix_from_y_axis(axis_world)
         roll, pitch, yaw = rotation_matrix_to_rpy(rot)
